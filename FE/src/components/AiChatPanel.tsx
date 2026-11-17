@@ -1,0 +1,403 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Bot, ChevronRight, Maximize2, MessageCircle, Minimize2, Send, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+import { env } from '../lib/env'
+import { http } from '../services/http/http'
+
+type ChatRole = 'user' | 'assistant'
+
+type AiCarCard = {
+  carId: number
+  name: string
+  price: number | null
+  imageUrl: string | null
+}
+
+type Turn = { role: ChatRole; content: string; cards?: AiCarCard[] }
+
+type ChatResponse = { reply: string; suggestedCarIds?: number[] }
+
+type CarDetailPayload = {
+  carId: number
+  name: string
+  price: number | null
+  imageUrl: string | null
+}
+
+function toAbsoluteMedia(path: string | null | undefined) {
+  const raw = (path ?? '').trim()
+  if (!raw) return ''
+  return new URL(raw, env.VITE_API_BASE_URL).toString()
+}
+
+function formatVnd(price: number | null | undefined) {
+  if (!Number.isFinite(price ?? NaN)) return 'Liên hệ'
+  return new Intl.NumberFormat('vi-VN').format(price as number) + ' ₫'
+}
+
+async function fetchCarCardsForAi(ids: number[]): Promise<AiCarCard[]> {
+  const unique = [...new Set(ids.filter((x) => Number.isInteger(x) && x > 0))].slice(0, 8)
+  if (unique.length === 0) return []
+
+  const settled = await Promise.allSettled(
+    unique.map((id) =>
+      http.get<{ data: CarDetailPayload }>(`/api/Cars/${id}`).then((r) => r.data.data),
+    ),
+  )
+
+  const out: AiCarCard[] = []
+  for (const s of settled) {
+    if (s.status !== 'fulfilled') continue
+    const d = s.value
+    if (!d?.carId) continue
+    out.push({
+      carId: d.carId,
+      name: d.name,
+      price: d.price ?? null,
+      imageUrl: d.imageUrl ?? null,
+    })
+  }
+  return out
+}
+
+export function AiChatPanel() {
+  const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [showNudge, setShowNudge] = useState(false) // Thêm state quản lý bong bóng gợi ý
+  const [messages, setMessages] = useState<Turn[]>([
+    {
+      role: 'assistant',
+      content:
+        'Xin chào! Mình là trợ lý AI. Bạn cần tư vấn về xe, giá hay tồn kho? (Thông tin dựa trên dữ liệu trên hệ thống.)',
+    },
+  ])
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // ── Scroll to bottom ──
+  useEffect(() => {
+    if (!open) return
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
+  }, [messages, open, loading])
+
+  // ── Timer tự động gợi ý chat (Nudge) ──
+  useEffect(() => {
+    // Nếu chat đang mở thì ẩn bong bóng và không hẹn giờ nữa
+    if (open) {
+      setShowNudge(false)
+      return
+    }
+
+    // Cứ mỗi 30 giây sẽ hiện bong bóng gọi khách 1 lần (Có thể thay đổi số 30000ms này)
+    const intervalId = setInterval(() => {
+      setShowNudge(true)
+
+      // Tự động ẩn bong bóng sau 8 giây để không cản trở màn hình
+      setTimeout(() => {
+        setShowNudge(false)
+      }, 8000)
+    }, 30000)
+
+    return () => clearInterval(intervalId)
+  }, [open])
+
+  // Khi đóng panel thì reset expanded
+  const handleClose = () => {
+    setOpen(false)
+    setExpanded(false)
+  }
+
+  const send = useCallback(async () => {
+    const text = input.trim()
+    if (!text || loading) return
+
+    setInput('')
+    const historyForApi = messages.map((m) => ({ role: m.role, content: m.content }))
+    setMessages((prev) => [...prev, { role: 'user', content: text }])
+    setLoading(true)
+
+    try {
+      const { data } = await http.post<ChatResponse>(
+        '/api/AiAdvisor/chat',
+        {
+          message: text,
+          history: historyForApi,
+        },
+        { timeout: 90_000 },
+      )
+      const reply = data.reply?.trim() || 'Không có nội dung phản hồi.'
+      const ids = data.suggestedCarIds ?? []
+      const cards = ids.length > 0 ? await fetchCarCardsForAi(ids) : []
+      setMessages((prev) => [...prev, { role: 'assistant', content: reply, cards }])
+    } catch (e: unknown) {
+      const errData =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { message?: string; detail?: string } } }).response?.data
+          : undefined
+      const serverMsg = errData?.message
+      const serverDetail = errData?.detail
+      const detailSnippet =
+        typeof serverDetail === 'string' && serverDetail.length > 0
+          ? serverDetail.length > 280
+            ? `${serverDetail.slice(0, 280)}…`
+            : serverDetail
+          : ''
+      const line =
+        typeof serverMsg === 'string' && serverMsg.length > 0
+          ? detailSnippet
+            ? `${serverMsg}\n\n${detailSnippet}`
+            : serverMsg
+          : 'Không gửi được tin. Kiểm tra backend đang chạy và cấu hình AiAdvisor.'
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `${line} Nếu cần gấp, bạn có thể gọi hotline hoặc nhắn Zalo ở góc trái màn hình.`,
+        },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }, [input, loading, messages])
+
+  // ── Kích thước panel tùy theo expanded ──
+  const panelWidth = expanded
+    ? 'min(100vw - 2rem, 720px)'
+    : 'min(100vw - 2rem, 380px)'
+
+  const panelMaxHeight = expanded
+    ? 'min(85dvh, 780px)'
+    : 'min(560px, calc(100dvh - 6rem))'
+
+  const cardGridClass = expanded
+    ? 'grid grid-cols-2 gap-2'
+    : 'flex flex-col gap-2'
+
+  return (
+    <>
+      <div
+        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6"
+        style={{
+          paddingBottom: 'max(0px, env(safe-area-inset-bottom))',
+          paddingRight: 'max(0px, env(safe-area-inset-right))',
+        }}
+      >
+        {open ? (
+          <div
+            className="pointer-events-auto flex flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.18)] transition-all duration-300 ease-in-out"
+            style={{
+              width: panelWidth,
+              maxHeight: panelMaxHeight,
+            }}
+            role="dialog"
+            aria-label="Trò chuyện tư vấn AI"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 border-b border-zinc-100 bg-gradient-to-r from-zinc-900 to-zinc-800 px-4 py-3 text-white">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+                  <Bot className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold leading-tight">Tư vấn AI</p>
+                  <p className="truncate text-xs text-white/70">Theo dữ liệu xe trên hệ thống</p>
+                </div>
+              </div>
+
+              {/* Nút phóng to / thu nhỏ + đóng */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => !e)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                  aria-label={expanded ? 'Thu nhỏ khung chat' : 'Phóng to khung chat'}
+                  title={expanded ? 'Thu nhỏ' : 'Phóng to'}
+                >
+                  {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                  aria-label="Đóng khung chat"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div
+              ref={listRef}
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-zinc-50/80 px-3 py-3"
+            >
+              {messages.map((m, i) => (
+                <div
+                  key={`${i}-${m.role}`}
+                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm transition-all ${
+                      expanded ? 'max-w-[85%]' : 'max-w-[92%]'
+                    } ${
+                      m.role === 'user'
+                        ? 'bg-[#e30613] text-white'
+                        : 'border border-zinc-200/80 bg-white text-zinc-900'
+                    }`}
+                  >
+                    <div className={m.role === 'assistant' ? 'whitespace-pre-wrap' : ''}>
+                      {m.content}
+                    </div>
+
+                    {/* Thẻ xe gợi ý */}
+                    {m.role === 'assistant' && m.cards && m.cards.length > 0 ? (
+                      <div className="mt-2.5 border-t border-zinc-100 pt-2.5">
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                          Xem nhanh
+                        </p>
+                        <div className={`max-h-56 overflow-y-auto pr-0.5 ${cardGridClass}`}>
+                          {m.cards.map((c) => (
+                            <Link
+                              key={c.carId}
+                              to={`/san-pham/xe/${c.carId}`}
+                              className="group flex gap-2 rounded-xl border border-zinc-200/90 bg-zinc-50/80 p-1.5 transition hover:border-zinc-300 hover:bg-white"
+                              title="Mở trang chi tiết xe"
+                            >
+                              {c.imageUrl ? (
+                                <img
+                                  src={toAbsoluteMedia(c.imageUrl)}
+                                  alt=""
+                                  className={`shrink-0 rounded-lg object-cover ${
+                                    expanded ? 'h-16 w-20' : 'h-14 w-[4.5rem]'
+                                  }`}
+                                />
+                              ) : (
+                                <div
+                                  className={`flex shrink-0 items-center justify-center rounded-lg bg-zinc-200/80 text-[10px] text-zinc-500 ${
+                                    expanded ? 'h-16 w-20' : 'h-14 w-[4.5rem]'
+                                  }`}
+                                >
+                                  Ảnh
+                                </div>
+                              )}
+                              <div className="flex min-w-0 flex-1 flex-col py-0.5">
+                                <p className="line-clamp-2 text-xs font-semibold text-zinc-900">
+                                  {c.name}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-zinc-600">
+                                  {formatVnd(c.price)}
+                                </p>
+                                <span className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#e30613] underline-offset-2 group-hover:underline">
+                                  Chi tiết xe
+                                  <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                </span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200/80">
+                    <Bot className="h-4 w-4 text-zinc-500" />
+                  </span>
+                  <span className="flex gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:0ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:300ms]" />
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-zinc-100 bg-white p-3">
+              <p className="mb-2 text-[11px] leading-snug text-zinc-500">
+                Gợi ý mang tính tham khảo; giá và chính sách có thể đổi — vui lòng xác nhận với showroom.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void send()
+                    }
+                  }}
+                  placeholder="Nhập câu hỏi…"
+                  className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-black outline-none ring-0 placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white"
+                  disabled={loading}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={loading || !input.trim()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Gửi"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Nút mở chat & Bong bóng nhắc nhở */}
+        <div className="pointer-events-auto relative">
+          
+          {/* Tooltip Gợi ý (Nudge) */}
+          {!open && showNudge && (
+            <div
+              className="absolute bottom-full right-0 mb-4 w-60 cursor-pointer rounded-2xl bg-white p-3 shadow-[0_10px_40px_rgba(0,0,0,0.15)] ring-1 ring-zinc-200/60 transition-all animate-bounce"
+              onClick={() => setOpen(true)}
+            >
+              {/* Nút X ẩn nhanh */}
+              <button
+                className="absolute right-2 top-2 p-1 text-zinc-400 hover:text-zinc-600"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowNudge(false)
+                }}
+              >
+                <X className="h-3 w-3" />
+              </button>
+              
+              <div className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                  <Bot className="h-4 w-4" />
+                </span>
+                <div className="flex-1 pr-2">
+                  <p className="text-sm font-semibold text-zinc-800">Bạn cần tìm gì?</p>
+                  <p className="mt-0.5 text-xs text-zinc-600">Chat ngay, tôi có thể hỗ trợ bạn nhé!</p>
+                </div>
+              </div>
+              
+              {/* Mũi tên tam giác chĩa xuống nút */}
+              <div className="absolute -bottom-2 right-[18px] h-4 w-4 rotate-45 border-b border-r border-zinc-200/60 bg-white" />
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-900 text-white shadow-[0_10px_30px_rgba(0,0,0,0.35)] ring-2 ring-white/30 transition hover:scale-105 hover:bg-zinc-800 active:scale-95"
+            aria-expanded={open}
+            aria-label={open ? 'Đóng tư vấn AI' : 'Mở tư vấn AI'}
+          >
+            {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}

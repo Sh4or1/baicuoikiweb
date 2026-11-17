@@ -1,0 +1,680 @@
+﻿using CoreEntities.Models;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+
+namespace SqlServer.DBContext
+{
+
+    public partial class OtoContext : DbContext
+    {
+        public OtoContext()
+        {
+        }
+
+        public OtoContext(DbContextOptions<OtoContext> options)
+            : base(options)
+        {
+        }
+
+        public virtual DbSet<Airecommendation> Airecommendations { get; set; }
+
+        public virtual DbSet<Article> Articles { get; set; }
+        public virtual DbSet<ArticleCar> ArticleCars { get; set; }
+
+        public virtual DbSet<Banner> Banners { get; set; }
+
+        public virtual DbSet<Booking> Bookings { get; set; }
+
+        // ============================================================
+        // ✨ ConsultRequest - bảng yêu cầu báo giá / mua trả góp
+        // ============================================================
+        public virtual DbSet<ConsultRequest> ConsultRequests { get; set; }
+
+        public virtual DbSet<Car> Cars { get; set; }
+
+        public virtual DbSet<CarImage> CarImages { get; set; }
+
+        public virtual DbSet<CarColor> CarColors { get; set; }
+
+        public virtual DbSet<CarPricingVersion> CarPricingVersions { get; set; }
+
+        public virtual DbSet<CarSpecification> CarSpecifications { get; set; } = null!;
+
+        public virtual DbSet<CarFeature> CarFeatures { get; set; } = null!;
+
+        public virtual DbSet<CarWishlist> CarWishlists { get; set; }
+
+        public virtual DbSet<ChatMessage> ChatMessages { get; set; }
+
+        public virtual DbSet<ChatSession> ChatSessions { get; set; }
+
+        public virtual DbSet<Feature> Features { get; set; }
+
+        public virtual DbSet<LocationTaxis> LocationTaxes { get; set; }
+
+        public virtual DbSet<Order> Orders { get; set; }
+
+        public virtual DbSet<Accessory> Accessories { get; set; }
+
+        public virtual DbSet<SystemSetting> SystemSettings { get; set; }
+
+        public virtual DbSet<OrderItem> OrderItems { get; set; }
+
+        public virtual DbSet<PaymentTransaction> PaymentTransactions { get; set; }
+
+        public virtual DbSet<Promotion> Promotions { get; set; }
+
+        public virtual DbSet<Review> Reviews { get; set; }
+
+        public virtual DbSet<Showroom> Showrooms { get; set; }
+
+        public virtual DbSet<SystemAuditLog> SystemAuditLogs { get; set; }
+
+        public virtual DbSet<User> Users { get; set; }
+
+        public virtual DbSet<UserActivity> UserActivities { get; set; }
+
+        public virtual DbSet<UserLogin> UserLogins { get; set; }
+
+        public virtual DbSet<Notification> Notifications { get; set; }
+
+        public DbSet<ConsultationProfile> ConsultationProfiles { get; set; }
+        public DbSet<CarInventory> CarInventories { get; set; }
+        public DbSet<Consignment> Consignments { get; set; }
+        public DbSet<CarAccessory> CarAccessories { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Airecommendation>(entity =>
+            {
+                entity.HasKey(e => e.RecommendationId).HasName("PK__AIRecomm__AA15BEE4630E9EA7");
+
+                entity.ToTable("AIRecommendations");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.Reason).HasMaxLength(500);
+
+                entity.HasOne(d => d.Car).WithMany(p => p.Airecommendations)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__AIRecomme__CarId__5AEE82B9");
+
+                entity.HasOne(d => d.User).WithMany(p => p.Airecommendations)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__AIRecomme__UserI__5BE2A6F2");
+            });
+
+            modelBuilder.Entity<Article>(entity =>
+            {
+                entity.HasKey(e => e.ArticleId).HasName("PK__Articles__9C6270E8685E14C2");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.IsPublished).HasDefaultValue(true);
+                entity.Property(e => e.Title).HasMaxLength(500);
+
+                entity.HasOne(d => d.Author).WithMany(p => p.Articles)
+                    .HasForeignKey(d => d.AuthorId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__Articles__Author__41EDCAC5");
+            });
+            modelBuilder.Entity<ArticleCar>(entity =>
+            {
+                // 1. Định nghĩa khóa chính kép (Composite Key)
+                entity.HasKey(ac => new { ac.ArticleId, ac.CarId });
+
+                // 2. Map tên bảng (nếu ní muốn tên bảng trong DB là ArticleCars)
+                entity.ToTable("ArticleCars");
+
+                // 3. Cấu hình mối quan hệ với bảng Articles
+                entity.HasOne(ac => ac.Article)
+                    .WithMany(a => a.ArticleCars)
+                    .HasForeignKey(ac => ac.ArticleId)
+                    .OnDelete(DeleteBehavior.Cascade); // Xóa bài viết thì xóa luôn liên kết xe
+
+                // 4. Cấu hình mối quan hệ với bảng Cars
+                entity.HasOne(ac => ac.Car)
+                    .WithMany(c => c.ArticleCars)
+                    .HasForeignKey(ac => ac.CarId)
+                    .OnDelete(DeleteBehavior.Cascade); // Xóa xe thì xóa luôn liên kết trong bài viết
+            });
+
+            modelBuilder.Entity<Banner>(entity =>
+            {
+                entity.HasKey(e => e.BannerId).HasName("PK__Banners__32E86AD19CBE788F");
+
+                entity.Property(e => e.BannerName)
+                    .HasMaxLength(255)
+                    .HasDefaultValue("Khuy?n mãi m?i");
+                entity.Property(e => e.EndDate).HasColumnType("datetime");
+                entity.Property(e => e.IsActive).HasDefaultValue(true);
+                entity.Property(e => e.StartDate).HasColumnType("datetime");
+            });
+
+            modelBuilder.Entity<Booking>(entity =>
+            {
+                entity.HasKey(e => e.BookingId).HasName("PK__Bookings__3214EC07B3AB1A46");
+
+                entity.Property(e => e.BookingTime)
+                    .HasMaxLength(10)
+                    .IsUnicode(false);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.CustomerName).HasMaxLength(100);
+                entity.Property(e => e.Phone)
+                    .HasMaxLength(20)
+                    .IsUnicode(false);
+                entity.Property(e => e.Status)
+                    .HasMaxLength(50)
+                    .HasDefaultValue("Pending");
+
+                entity.HasOne(d => d.Car).WithMany(p => p.Bookings)
+                    .HasForeignKey(d => d.CarId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__Bookings__CarId__2739D489");
+
+                entity.HasOne(d => d.Showroom).WithMany(p => p.Bookings)
+                    .HasForeignKey(d => d.ShowroomId)
+                    .HasConstraintName("FK__Bookings__Showro__3D2915A8");
+
+                entity.HasOne(d => d.User).WithMany(p => p.Bookings)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__Bookings__UserId__282DF8C2");
+            });
+
+            // ============================================================
+            // ✨ ConsultRequest — yêu cầu báo giá / trả góp
+            // Đặt cùng style với Booking. KHÔNG Cascade trên FK để tránh
+            // mất dữ liệu khi admin lỡ tay xóa Showroom/Car/User.
+            // ============================================================
+            modelBuilder.Entity<ConsultRequest>(entity =>
+            {
+                entity.HasKey(e => e.ConsultRequestId).HasName("PK_ConsultRequests");
+
+                entity.ToTable("ConsultRequests");
+
+                entity.Property(e => e.CustomerName).HasMaxLength(100);
+
+                entity.Property(e => e.Phone)
+                    .HasMaxLength(20)
+                    .IsUnicode(false); // varchar(20) - giống Bookings.Phone
+
+                entity.Property(e => e.RequestType).HasMaxLength(50);
+
+                entity.Property(e => e.Status)
+                    .HasMaxLength(50)
+                    .HasDefaultValue("Pending");
+
+                entity.Property(e => e.MonthlyIncome).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.DownPayment).HasColumnType("decimal(18, 2)");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.HasOne(d => d.Car).WithMany()
+                    .HasForeignKey(d => d.CarId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK_ConsultRequests_Cars_CarId");
+
+                entity.HasOne(d => d.Showroom).WithMany()
+                    .HasForeignKey(d => d.ShowroomId)
+                    .OnDelete(DeleteBehavior.ClientSetNull) // 🔒 KHÔNG Cascade
+                    .HasConstraintName("FK_ConsultRequests_Showrooms_ShowroomId");
+
+                entity.HasOne(d => d.User).WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK_ConsultRequests_Users_UserId");
+                entity.HasOne(d => d.CarPricingVersion).WithMany()
+                    .HasForeignKey(d => d.CarPricingVersionId)
+                    .HasConstraintName("FK_ConsultRequests_CarPricingVersions_PricingVersionId");
+                entity.HasOne(d => d.CarColor).WithMany()
+                    .HasForeignKey(d => d.CarColorId)
+                    .HasConstraintName("FK_ConsultRequests_CarColors_CarColorId");
+            });
+
+            modelBuilder.Entity<Car>(entity =>
+            {
+                entity.HasKey(e => e.CarId).HasName("PK__Cars__68A0342EA480F904");
+
+                entity.Property(e => e.Brand).HasMaxLength(100);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.DeletedAt).HasColumnType("datetime");
+                entity.Property(e => e.FuelType).HasMaxLength(50);
+                entity.Property(e => e.Mileage).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.Model).HasMaxLength(255);
+                entity.Property(e => e.Name).HasMaxLength(255);
+                entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.UpdatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                //entity.HasMany(d => d.Features).WithMany(p => p.Cars)
+                //    .UsingEntity<Dictionary<string, object>>(
+                //        "CarFeature",
+                //        r => r.HasOne<Feature>().WithMany()
+                //            .HasForeignKey("FeatureId")
+                //            .OnDelete(DeleteBehavior.ClientSetNull)
+                //            .HasConstraintName("FK__CarFeatur__Featu__0C85DE4D"),
+                //        l => l.HasOne<Car>().WithMany()
+                //            .HasForeignKey("CarId")
+                //            .OnDelete(DeleteBehavior.ClientSetNull)
+                //            .HasConstraintName("FK__CarFeatur__CarId__0B91BA14"),
+                //        j =>
+                //        {
+                //            j.HasKey("CarId", "FeatureId").HasName("PK__CarFeatu__E08204926F1DFBCC");
+                //            j.ToTable("CarFeatures");
+                //        });
+            });
+
+            modelBuilder.Entity<CarImage>(entity =>
+            {
+                entity.HasKey(e => e.CarImageId).HasName("PK__CarImage__614BE6AFD1BB03D9");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.ImageUrl).HasMaxLength(255);
+
+                entity.HasOne(d => d.Car).WithMany(p => p.CarImages)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__CarImages__CarId__5CD6CB2B");
+            });
+
+            modelBuilder.Entity<CarPricingVersion>(entity =>
+            {
+                entity.HasKey(e => e.PricingVersionId);
+
+                entity.ToTable("CarPricingVersions");
+
+                entity.Property(e => e.VersionName).HasMaxLength(255);
+                entity.Property(e => e.PriceVnd).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.IsActive).HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.UpdatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.HasOne(d => d.Car)
+                    .WithMany(p => p.CarPricingVersions)
+                    .HasForeignKey(d => d.CarId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_CarPricingVersions_Cars");
+            });
+
+            modelBuilder.Entity<CarSpecification>(entity =>
+            {
+                entity.HasKey(e => e.SpecId).HasName("PK__CarSpeci__883D567BD7BFC457");
+
+                entity.Property(e => e.Category).HasMaxLength(100);
+                entity.Property(e => e.SpecName).HasMaxLength(255);
+                entity.Property(e => e.SpecValue).HasMaxLength(255);
+
+                entity.HasOne(d => d.Car).WithMany(p => p.CarSpecifications)
+                    .HasForeignKey(d => d.CarId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__CarSpecif__CarId__06CD04F7");
+            });
+
+            modelBuilder.Entity<CarFeature>(entity =>
+            {
+                // 1. DÒNG NÀY QUAN TRỌNG NHẤT ĐỂ TRỊ LỖI: Khai báo khóa chính kép
+                entity.HasKey(e => new { e.CarId, e.FeatureId });
+
+                // 2. Dây nối về bảng Car (Đoạn ní vừa viết)
+                entity.HasOne(d => d.Car)
+                      .WithMany(p => p.CarFeatures)
+                      .HasForeignKey(d => d.CarId);
+
+                // 3. Dây nối về bảng Feature (Khai báo nốt cho đủ bộ)
+                entity.HasOne(d => d.Feature)
+                      .WithMany(p => p.CarFeatures) // Lưu ý: Nếu trong model Feature  KHÔNG có ICollection<CarFeature> thì bỏ cái p => p.CarFeatures đi, chỉ để .WithMany() thôi nhé.
+                      .HasForeignKey(d => d.FeatureId);
+            });
+
+            modelBuilder.Entity<CarWishlist>(entity =>
+            {
+                entity.HasKey(e => e.WishlistId).HasName("PK__CarWishl__233189EB685E97BB");
+
+                entity.ToTable("CarWishlist");
+
+                entity.Property(e => e.AddedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.HasOne(d => d.Car).WithMany(p => p.CarWishlists)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__CarWishli__CarId__5DCAEF64");
+
+                entity.HasOne(d => d.User).WithMany(p => p.CarWishlists)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__CarWishli__UserI__5EBF139D");
+            });
+
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.HasKey(e => e.MessageId).HasName("PK__ChatMess__C87C0C9C9F2D92FF");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.SenderType).HasMaxLength(20);
+
+                entity.HasOne(d => d.Session).WithMany(p => p.ChatMessages)
+                    .HasForeignKey(d => d.SessionId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__ChatMessa__Sessi__160F4887");
+            });
+
+            modelBuilder.Entity<ChatSession>(entity =>
+            {
+                entity.HasKey(e => e.SessionId).HasName("PK__ChatSess__C9F49290924C9141");
+
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.GuestToken).HasMaxLength(255);
+                entity.Property(e => e.Status)
+                    .HasMaxLength(50)
+                    .HasDefaultValue("AI_Handling");
+
+                entity.HasOne(d => d.AssignedToNavigation).WithMany(p => p.ChatSessionAssignedToNavigations)
+                    .HasForeignKey(d => d.AssignedTo)
+                    .HasConstraintName("FK__ChatSessi__Assig__123EB7A3");
+
+                entity.HasOne(d => d.User).WithMany(p => p.ChatSessionUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__ChatSessi__UserI__114A936A");
+            });
+
+            modelBuilder.Entity<Feature>(entity =>
+            {
+                entity.HasKey(e => e.FeatureId).HasName("PK__Features__82230BC9B29C0D63");
+
+                entity.Property(e => e.FeatureName).HasMaxLength(255);
+                entity.Property(e => e.Icon).HasMaxLength(255);
+            });
+
+            modelBuilder.Entity<LocationTaxis>(entity =>
+            {
+                entity.HasKey(e => e.LocationId).HasName("PK__Location__E7FEA49744FC6D16");
+
+                entity.Property(e => e.CityName).HasMaxLength(100);
+                entity.Property(e => e.LicensePlateFee).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.RegistrationTaxPercent).HasColumnType("decimal(5, 2)");
+            });
+
+            modelBuilder.Entity<Order>(entity =>
+            {
+                entity.HasKey(e => e.OrderId).HasName("PK__Orders__C3905BCFC3E9C951");
+
+                entity.Property(e => e.OrderDate)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.PaymentMethod).HasMaxLength(50);
+                entity.Property(e => e.ShippingAddress).HasMaxLength(500);
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
+
+                // Config cho Xe
+                entity.HasOne(d => d.Car).WithMany(p => p.Orders)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__Orders__CarId__619B8048");
+
+                // Config cho Khuyến mãi
+                entity.HasOne(d => d.Promotion).WithMany(p => p.Orders)
+                    .HasForeignKey(d => d.PromotionId)
+                    .HasConstraintName("FK__Orders__Promotio__29221CFB");
+
+                // 👉 CHỖ QUAN TRỌNG NHẤT: Ép nó khớp với danh sách Orders bên User
+                entity.HasOne(d => d.Staff)
+                    .WithMany(p => p.Orders) // Phải có p.Orders ở đây nè ní!
+                    .HasForeignKey(d => d.StaffId)
+                    .HasConstraintName("FK_Orders_Staff");
+            });
+
+            modelBuilder.Entity<OrderItem>(entity =>
+            {
+                entity.HasKey(e => e.OrderItemId).HasName("PK__OrderIte__57ED06818F5EAB7E");
+
+                entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.Quantity).HasDefaultValue(1);
+
+                // 👉 Thêm cấu hình cho cột phân loại mục hàng
+                entity.Property(e => e.ItemType).HasMaxLength(50);
+
+                entity.HasOne(d => d.Car).WithMany(p => p.OrderItems)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__OrderItem__CarId__5FB337D6");
+
+                entity.HasOne(d => d.Order).WithMany(p => p.OrderItems)
+                    .HasForeignKey(d => d.OrderId)
+                    .HasConstraintName("FK__OrderItem__Order__60A75C0F");
+
+                // 👉 Thêm cấu hình liên kết tới bảng Phụ kiện
+                entity.HasOne(d => d.Accessory).WithMany(p => p.OrderItems)
+                    .HasForeignKey(d => d.AccessoryId)
+                    .HasConstraintName("FK_OrderItems_Accessories");
+            });
+
+            modelBuilder.Entity<PaymentTransaction>(entity =>
+            {
+                entity.HasKey(e => e.TransactionId).HasName("PK__PaymentT__55433A6BD6EFEFD7");
+
+                entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
+                entity.Property(e => e.PaymentMethod).HasMaxLength(50);
+                entity.Property(e => e.Status).HasMaxLength(50);
+                entity.Property(e => e.TransactionDate)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.HasOne(d => d.Order).WithMany(p => p.PaymentTransactions)
+                    .HasForeignKey(d => d.OrderId)
+                    .HasConstraintName("FK__PaymentTr__Order__6383C8BA");
+            });
+
+            modelBuilder.Entity<Promotion>(entity =>
+            {
+                entity.HasKey(e => e.PromotionId).HasName("PK__Promotio__52C42FCF8A6988C7");
+
+                entity.HasIndex(e => e.Code, "UQ__Promotio__A25C5AA7A444C1CD").IsUnique();
+
+                entity.Property(e => e.Code).HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5, 2)");
+                entity.Property(e => e.EndDate).HasColumnType("datetime");
+                entity.Property(e => e.StartDate).HasColumnType("datetime");
+                entity.Property(e => e.Status).HasMaxLength(50);
+            });
+
+            modelBuilder.Entity<Review>(entity =>
+            {
+                // Giữ nguyên khóa chính
+                entity.HasKey(e => e.ReviewId).HasName("PK__Reviews__74BC79CE36435DC2");
+
+                // Thiết lập các thuộc tính mới
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.Property(e => e.FullName).HasMaxLength(255);
+                entity.Property(e => e.Phone).HasMaxLength(20);
+                entity.Property(e => e.OrderCode).HasMaxLength(50);
+
+                // Mặc định là chưa duyệt
+                entity.Property(e => e.IsApproved).HasDefaultValue(false);
+
+                // Liên kết với bảng xe (Giữ nguyên)
+                entity.HasOne(d => d.Car).WithMany(p => p.Reviews)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__Reviews__CarId__6477ECF3");
+
+                // ⛔ XÓA BỎ HOẶC COMMENT ĐOẠN LIÊN KẾT VỚI USER DƯỚI ĐÂY:
+                /*
+                entity.HasOne(d => d.User).WithMany(p => p.Reviews)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__Reviews__UserId__656C112C");
+                */
+            });
+
+            modelBuilder.Entity<Showroom>(entity =>
+            {
+                entity.HasKey(e => e.ShowroomId).HasName("PK__Showroom__A7726CBBA913B30F");
+
+                entity.Property(e => e.Hotline).HasMaxLength(20);
+                entity.Property(e => e.Name).HasMaxLength(255);
+                entity.Property(e => e.Province)
+                      .HasMaxLength(100)
+                      .IsRequired(); // Bắt buộc phải có Tỉnh/Thành
+
+                entity.Property(e => e.District)
+                      .HasMaxLength(100);
+
+                entity.Property(e => e.StreetAddress)
+                      .HasMaxLength(300);
+            });
+
+            modelBuilder.Entity<SystemAuditLog>(entity =>
+            {
+                entity.HasKey(e => e.LogId).HasName("PK__SystemAu__5E548648E69FCEBF");
+
+                entity.Property(e => e.ActionType).HasMaxLength(100);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.IpAddress).HasMaxLength(50);
+                entity.Property(e => e.RecordId).HasMaxLength(50);
+                entity.Property(e => e.TableName).HasMaxLength(100);
+                entity.Property(e => e.UserAgent).HasMaxLength(255);
+
+                entity.HasOne(d => d.User).WithMany(p => p.SystemAuditLogs)
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__SystemAud__UserI__1BC821DD");
+            });
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.UserId).HasName("PK__Users__1788CC4C5DD76572");
+
+                entity.HasIndex(e => e.Username, "UQ__Users__536C85E4014A9D7C").IsUnique();
+
+                entity.HasIndex(e => e.Email, "UQ__Users__A9D105348B415492").IsUnique();
+
+                entity.Property(e => e.Address).HasMaxLength(500);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.DeletedAt).HasColumnType("datetime");
+                entity.Property(e => e.Email).HasMaxLength(255);
+                entity.Property(e => e.FullName).HasMaxLength(255);
+                entity.Property(e => e.PasswordHash).HasMaxLength(255);
+                entity.Property(e => e.Phone).HasMaxLength(15);
+                entity.Property(e => e.Role).HasMaxLength(50);
+                entity.Property(e => e.Status)
+                    .HasMaxLength(50)
+                    .HasDefaultValue("Active");
+                entity.Property(e => e.Username).HasMaxLength(255);
+            });
+
+            modelBuilder.Entity<UserActivity>(entity =>
+            {
+                entity.HasKey(e => e.ActivityId).HasName("PK__UserActi__45F4A79164816C2C");
+
+                entity.ToTable("UserActivity");
+
+                entity.Property(e => e.ActivityDate)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+                entity.Property(e => e.ActivityType).HasMaxLength(50);
+
+                entity.HasOne(d => d.Car).WithMany(p => p.UserActivities)
+                    .HasForeignKey(d => d.CarId)
+                    .HasConstraintName("FK__UserActiv__CarId__66603565");
+
+                entity.HasOne(d => d.User).WithMany(p => p.UserActivities)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("FK__UserActiv__UserI__6754599E");
+            });
+
+            modelBuilder.Entity<UserLogin>(entity =>
+            {
+                entity.HasKey(e => new { e.LoginProvider, e.ProviderKey }).HasName("PK__UserLogi__2B2C5B522D37D021");
+
+                entity.Property(e => e.LoginProvider).HasMaxLength(50);
+                entity.Property(e => e.ProviderKey).HasMaxLength(255);
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("(getdate())")
+                    .HasColumnType("datetime");
+
+                entity.HasOne(d => d.User).WithMany(p => p.UserLogins)
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK__UserLogin__UserI__503BEA1C");
+            });
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.User)
+                .WithMany() // Giả sử trong model User ní không tạo ICollection<Notification>
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull); // Xóa User thì thông báo vẫn còn, chỉ bị set Null ID
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.Showroom)
+                .WithMany()
+                .HasForeignKey(n => n.ShowroomId)
+                .OnDelete(DeleteBehavior.ClientSetNull); // Xóa Showroom thì ID trong thông báo thành Null
+
+            // ============================================================
+            // CarColor — bảng màu xe (1 xe có nhiều màu)
+            // ============================================================
+            modelBuilder.Entity<CarColor>(entity =>
+            {
+                entity.HasKey(e => e.CarColorId);
+                entity.Property(e => e.ColorName).HasMaxLength(100).IsRequired();
+                entity.Property(e => e.HexCode).HasMaxLength(20);
+                entity.Property(e => e.CreatedAt)
+                      .HasDefaultValueSql("(getutcdate())")
+                      .HasColumnType("datetime");
+
+                entity.HasOne(cc => cc.Car)
+                      .WithMany(c => c.CarColors)
+                      .HasForeignKey(cc => cc.CarId)
+                      .OnDelete(DeleteBehavior.Cascade); // Xóa Car → xóa hết màu của nó
+
+                // 1 xe không nên có 2 màu trùng tên
+                entity.HasIndex(cc => new { cc.CarId, cc.ColorName }).IsUnique();
+            });
+
+            // ============================================================
+            // CarInventory — UNIQUE bao gồm CarColorId để phân biệt theo màu
+            // ============================================================
+            // Chú ý: SQL Server filtered unique index xem 2 hàng có CarColorId = NULL
+            // cùng (CarId, ShowroomId) là TRÙNG → đúng ý ta (kho cũ không màu chỉ có 1 record).
+            modelBuilder.Entity<CarInventory>()
+                        .HasIndex(ci => new { ci.ShowroomId, ci.CarId, ci.CarColorId })
+                        .IsUnique();
+
+            // FK CarInventory → CarColor (nullable, SetNull khi xóa màu)
+            modelBuilder.Entity<CarInventory>()
+                        .HasOne(ci => ci.CarColor)
+                        .WithMany(cc => cc.CarInventories)
+                        .HasForeignKey(ci => ci.CarColorId)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+            OnModelCreatingPartial(modelBuilder);
+        }
+
+        partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
+    }
+}
